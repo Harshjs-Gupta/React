@@ -335,6 +335,7 @@ function MovieDetails({ selectedID, onCloseMovie, onAddWatched }) {
     },
     [selectedID]
   );
+  
 
   useEffect(
     function () {
