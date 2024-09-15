@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import StarRating from "./StarRating";
+import { useMovies } from "./useMovies";
 
 const tempMovieData = [
   {
@@ -52,13 +53,17 @@ const average = (arr) =>
   arr.reduce((acc, cur, i, arr) => acc + cur / arr.length, 0);
 
 const KEY = "13d12680";
+
 export default function App() {
-  const [query, setQuery] = useState("interstellar");
-  const [movies, setMovies] = useState([]);
-  const [watched, setWatched] = useState([]);
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [query, setQuery] = useState("");
   const [selectedID, setSelectedId] = useState(null);
+  const { movies, isLoading, error } = useMovies(query);
+  // const [watched, setWatched] = useState([]);
+
+  const [watched, setWatched] = useState(function () {
+    const storedValue = localStorage.getItem("watched");
+    return JSON.parse(storedValue);
+  });
 
   function handleSelectMovie(id) {
     setSelectedId(id);
@@ -69,6 +74,7 @@ export default function App() {
 
   function handleAddMovies(movie) {
     setWatched((watched) => [...watched, movie]);
+    // localStorage.setItem("watched", JSON.stringify([...watched, movie]));
   }
 
   function handleDeleteWatched(id) {
@@ -77,38 +83,9 @@ export default function App() {
 
   useEffect(
     function () {
-      async function fetchMovies() {
-        setIsLoading(true);
-        try {
-          const res = await fetch(
-            `http://www.omdbapi.com/?apikey=${KEY}&s=${query}`
-          );
-
-          if (!res.ok)
-            throw new Error("Something went wrong with fetching movies");
-
-          const data = await res.json();
-          if (data.response === "False") throw new Error("Movie not found");
-
-          setMovies(data.Search);
-          setIsLoading(false);
-        } catch (err) {
-          console.error(err.message);
-          setError(err.message);
-        } finally {
-          setIsLoading(false);
-        }
-      }
-
-      if (query.length < 3) {
-        setMovies([]);
-        setError("");
-        return;
-      }
-
-      fetchMovies();
+      localStorage.setItem("watched", JSON.stringify(watched));
     },
-    [query]
+    [watched]
   );
 
   return (
@@ -134,6 +111,7 @@ export default function App() {
               selectedID={selectedID}
               onCloseMovie={handleCloseMovie}
               onAddWatched={handleAddMovies}
+              watched={watched}
             />
           ) : (
             <>
@@ -176,6 +154,31 @@ function Logo() {
 }
 
 function Search({ query, setQuery }) {
+  const inputEl = useRef(null);
+
+  useEffect(
+    function () {
+      function callback(e) {
+        if (e.code === "Enter") {
+          if (document.activeElement === inputEl.current) return;
+
+          inputEl.current.focus();
+          setQuery("");
+        }
+      }
+
+      document.addEventListener("keydown", callback);
+      return () => document.addEventListener("keydown", callback);
+    },
+    [setQuery]
+  );
+
+  // useEffect(function () {
+  //   const el = document.querySelector(".search");
+  //   console.log(el);
+  //   el.focus();
+  // });
+
   return (
     <input
       className="search"
@@ -183,6 +186,7 @@ function Search({ query, setQuery }) {
       placeholder="Search movies..."
       value={query}
       onChange={(e) => setQuery(e.target.value)}
+      ref={inputEl}
     />
   );
 }
@@ -200,7 +204,7 @@ function Main({ children }) {
 }
 
 ////////////////////////
-/* List Box */
+// ! List Box
 ////////////////////////
 
 function Box({ children }) {
@@ -270,10 +274,24 @@ function Movie({ movie, handleSelectMovie }) {
   );
 }
 
-function MovieDetails({ selectedID, onCloseMovie, onAddWatched }) {
+function MovieDetails({ selectedID, onCloseMovie, onAddWatched, watched }) {
   const [movie, setMovies] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [userRating, setUserRating] = useState("");
+
+  const countRef = useRef(0);
+
+  useEffect(
+    function () {
+      if (userRating) countRef.current++;
+    },
+    [userRating]
+  );
+
+  const isWatched = watched.map((movie) => movie.imdbID).includes(selectedID);
+  const watchedUserRating = watched.find(
+    (movie) => movie.imdbID === selectedID
+  )?.userRating;
 
   const {
     Title: title,
@@ -297,6 +315,7 @@ function MovieDetails({ selectedID, onCloseMovie, onAddWatched }) {
       imdbRating: Number(imdbRating),
       runtime: Number(runtime.split(" ").at(0)),
       userRating,
+      countRatingDecision: countRef.current,
     };
     onAddWatched(newWatchedMovie);
     onCloseMovie();
@@ -313,7 +332,7 @@ function MovieDetails({ selectedID, onCloseMovie, onAddWatched }) {
       document.addEventListener("keydown", callback);
 
       return function () {
-        document.addEventListener("keydown", callback);
+        document.removeEventListener("keydown", callback);
       };
     },
     [onCloseMovie]
@@ -335,7 +354,6 @@ function MovieDetails({ selectedID, onCloseMovie, onAddWatched }) {
     },
     [selectedID]
   );
-  
 
   useEffect(
     function () {
